@@ -9,6 +9,7 @@
 #include <sys/time.h>
 #include <sys/select.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "mbus.h"
 #define pr() //printf("%s %s %d\n", __FILE__, __func__, __LINE__)
@@ -167,6 +168,10 @@ static int send_date(struct send_info *info, unsigned char *rbuf, int len)
 	return ret == -1 ? -1 : rlen;
 }	
 
+int temperature = 0;
+long long last_time_in_mill = 0;
+#define UP_RATE 1000 // 100ms
+
 int get_temperature(char *ip, char *port)
 {
 	unsigned char rbuf[32];
@@ -175,7 +180,17 @@ int get_temperature(char *ip, char *port)
 	char sbuf[] = {0x01, 0x03, 0x00, 0x00,0x00, 0x02};
 	unsigned int tem;
 	int len;
+	struct timeval tv;
+	long long time_in_mill;
 	
+	gettimeofday(&tv, NULL);;
+	time_in_mill =  (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000;
+	if (time_in_mill - last_time_in_mill < UP_RATE){
+		return temperature;
+	}
+	
+	last_time_in_mill = time_in_mill;
+
 	if ((info = create_connect(ip, port)) == NULL){
 		printf("Can't create a connect to %s:%s\n", ip, port);
 		return 0;
@@ -203,7 +218,7 @@ int get_temperature(char *ip, char *port)
 		return 0;
 	}
 	del_connect(info);
-
+	temperature = tem;
 	return tem;
 	
 }

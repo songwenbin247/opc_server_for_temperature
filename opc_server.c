@@ -16,9 +16,23 @@ static void stopHandler(int sig)
 	free(port);
 }
 
+static void beforeReadTemperatue(void *handle, const UA_NodeId nodeId, const UA_Variant *data, const UA_NumericRange *range)
+{
+	UA_Server *server = (UA_Server *)handle;
+	UA_Int32 temperature = get_temperature(ip, port);
+	UA_Variant value;
+	UA_Variant_setScalarCopy(&value, &temperature, &UA_TYPES[UA_TYPES_INT32]);
+	UA_NodeId tempNodeId = UA_NODEID_STRING(1, "temperatureCall");
+	UA_Server_writeValue(server, tempNodeId, value);
+
+} 
+
+static void afterUpdateTemperatue(void *handle, const UA_NodeId nodeId, const UA_Variant *data, const UA_NumericRange *range){
+	UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND, "The temperature has been updated");
+}
 
 static UA_StatusCode 
-incremental(void *handle, const UA_NodeId nodeId, UA_Boolean sourceTimeStamp, const UA_NumericRange *range, UA_DataValue *value)
+getTemperature(void *handle, const UA_NodeId nodeId, UA_Boolean sourceTimeStamp, const UA_NumericRange *range, UA_DataValue *value)
 {
 	if(range){
 		value->hasStatus = true;
@@ -59,28 +73,35 @@ int main(int argc, char **argv)
 	/*1. Define the node attributes */
 	UA_VariableAttributes attr;
 	UA_VariableAttributes_init(&attr);
-	attr.displayName = UA_LOCALIZEDTEXT("en_US", "my displayname");
-	UA_Int32 myInteger = 56;
-	UA_Variant_setScalarCopy(&attr.value, &myInteger, &UA_TYPES[UA_TYPES_INT32]);
-	attr.accessLevel = UA_ACCESSLEVELMASK_HISTORYREAD | UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
+	attr.displayName = UA_LOCALIZEDTEXT("en_US", "TemperatureCall");
+	UA_Int32 temperature = get_temperature(ip, port);
+	UA_Variant_setScalar(&attr.value, &temperature, &UA_TYPES[UA_TYPES_INT32]);
 	/*2. Define where the node shall be added with which browsename*/
-	UA_NodeId newNodeId = UA_NODEID_STRING(1, "the.answer");
+	UA_NodeId newNodeId = UA_NODEID_STRING(1, "temperatureCall");
 	UA_NodeId parentNodeId = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
 	UA_NodeId parentReferenceNodeId = UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES);
 	UA_NodeId variableType = UA_NODEID_NULL;
-	UA_QualifiedName browseName = UA_QUALIFIEDNAME(1, "my qualified name");
+	UA_QualifiedName browseName = UA_QUALIFIEDNAME(1, "temperatureCall");
+
 	/*3. Add the node*/
 	UA_Server_addVariableNode(server, newNodeId, parentNodeId, parentReferenceNodeId,browseName ,variableType, attr, NULL, NULL);
-	UA_Variant_deleteMembers(&attr.value);
+	
+	/*4. add callBack func*/
+	UA_ValueCallback callback;
+	callback.handle = server;
+	callback.onRead = beforeReadTemperatue;
+	callback.onWrite = afterUpdateTemperatue;
+	UA_Server_setVariableNode_valueCallback(server, newNodeId, callback);
+
 
 	/*Add a variable with the a incremental source*/
-	UA_DataSource myDataSource = (UA_DataSource){.handle = NULL, .read = incremental, .write = NULL};
+	UA_DataSource myDataSource = (UA_DataSource){.handle = NULL, .read = getTemperature, .write = NULL};
 	UA_VariableAttributes v_attr;
 	UA_VariableAttributes_init(&v_attr);
-	v_attr.description = UA_LOCALIZEDTEXT("en-US", "get temperature via modbus");
-	v_attr.displayName = UA_LOCALIZEDTEXT("en-US", "temperature");
+	v_attr.description = UA_LOCALIZEDTEXT("en-US", "Temperature Datesource");
+	v_attr.displayName = UA_LOCALIZEDTEXT("en-US", "temperature-Datesource");
 	v_attr.accessLevel = UA_ACCESSLEVELMASK_READ ;
-	const UA_QualifiedName dateName = UA_QUALIFIEDNAME(1, "temperature");
+	const UA_QualifiedName dateName = UA_QUALIFIEDNAME(1, "temperature-Datesource");
 	UA_NodeId dataSourceId;
 	UA_Server_addDataSourceVariableNode(server, UA_NODEID_NULL,
 				UA_NODEID_NUMERIC(0,UA_NS0ID_OBJECTSFOLDER),
